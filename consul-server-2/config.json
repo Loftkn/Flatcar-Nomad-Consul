@@ -1,0 +1,22 @@
+{
+"bootstrap_expect": 3,
+"server": true,
+"datacenter": "dc1",
+"data_dir": "/var/lib/consul",
+"domain": "consul",
+"enable_script_checks": true,
+"encrypt": "QRI8ulhkVjMMYx5Z5+1uML9a1RmvYQ/6hpmHQIZ7NC8=",
+"log_level": "INFO",
+"enable_syslog": true,
+"leave_on_terminate": true,
+"rejoin_after_leave": true,
+"retry_join": [
+         "{{ GetInterfaceIP \"ens4\"}}",
+         "192.168.110.250",
+         "192.168.110.251"
+	 ],
+"start_join": ["{{ GetInterfaceIP \"ens4\"}}", "192.168.110.251", "192.168.110.250"],
+"client_addr": ["0.0.0.0"],
+"advertise_addr": "{{ GetInterfaceIP \"ens4\"}}"
+}
+

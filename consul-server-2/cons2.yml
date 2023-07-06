@@ -1,0 +1,94 @@
+etcd:
+  name: "Consul2"
+locksmith:
+  reboot_strategy: off
+passwd:
+  users:
+    - name: core
+      password_hash: "$6$wWUJVN9bjph3Nx/P$v2GiRuLeTWgrBJ4Xar0feNjWOz.XUGBmsuEv6H1Q8V4nWCL/v2WQLEdowuPg2B4WLpSTGbWZqCxRjOOA/Z.Wz1"
+      ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC8jSRrZQzbvDEEcSaGwy39w75m5rTFBtsFaFLkDGPy71b9NWuQJe+T7ELYBXvLchpXnLhhx7eNFsR6008qYnwJODgSEJeQWCI+pF5bsKAVeajzM+0tsI06hn7du1Yv/iv91q63akMdYkQ8wMNfSKlI1Yng6yKYoUn1dNcQLCA8/adnO9IedltE/j/oWo4sTto0U3RjmHssEi59+thMv1oXnvZzEGVdbBdjgcAO++2R+GcuCsErGGSmZih8d7ugr3bOi5jCvrkzAvvT9mmYPtnE8rDlsG53xB89RBSb+TrJaAV6bZREGIX4M2GhZEWIs05ad9ktCwARqy/Q0/dlfDkn5DzX57hb/XD9bmxKUw3EoRiV/6gET0w3T8DhA10wesEbKcyCUNTqfsG9ebkarvQofM6zDKFTOn2nfozJiURrFEN3n+f8A+blwG3QMFLcbGvfGc6JM3Kj+Ij741FMXKgPOIc98X/ED/DviC9pJdoBgoIinSIUm/qvBjy17ojV9Gk= root@alice
+      groups:
+        - wheel
+        - docker
+      shell: /bin/bash
+    - name: consul
+      password_hash: "$6$wWUJVN9bjph3Nx/P$v2GiRuLeTWgrBJ4Xar0feNjWOz.XUGBmsuEv6H1Q8V4nWCL/v2WQLEdowuPg2B4WLpSTGbWZqCxRjOOA/Z.Wz1"
+      shell: /bin/bash
+      
+storage:
+  directories:
+  - path: /etc/consul.d
+    mode: 0755
+    user:
+       name: consul
+  - path: /var/lib/consul
+    mode: 0755
+    user:
+       name: consul
+
+  files:   
+  - path: /opt/bin/consul_1.11.2_linux_amd64.zip
+    filesystem: root
+    mode: 0644
+    user:
+       name: consul
+    contents:
+      remote:
+        url: https://releases.hashicorp.com/consul/1.11.2/consul_1.11.2_linux_amd64.zip
+        verification:
+          hash:
+            function: sha512
+            sum: 074c984575c8c8bc694f83eac034765a40448418687af8a213a83450c96b36cffe4f1fcb839d5a7f595d33f9e96497d31b2a193178fa1e24e2166ec1de475650
+
+  - path: /etc/hostname
+    contents:
+      inline: consul-2
+    mode: 0600
+  
+  - path: /etc/consul.d/bootstrap/config.json
+    contents:
+      local: config.json
+    user:
+       name: consul         
+    mode: 0755
+
+systemd:
+  units:
+    - name: prepare-consul-binary.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Unpack Consul binary to /opt/bin
+        ConditionPathExists=!/opt/bin/consul
+        [Service]
+        Type=oneshot
+        Restart=on-failure
+        RemainAfterExit=yes
+        Environment=CONSUL_VERSION=1.11.2
+        ExecStart=/usr/bin/unzip "/opt/bin/consul_${CONSUL_VERSION}_linux_amd64.zip" -d /opt/bin
+        ExecStart=/usr/bin/rm "/opt/bin/consul_${CONSUL_VERSION}_linux_amd64.zip"
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: consul.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Consul
+        Documentation=https://www.consul.io/docs
+        After=network-online.target prepare-consul-binary.service
+        Wants=network-online.target
+        Requires=prepare-consul-binary.service
+        [Service]
+        ExecStart=/opt/bin/consul \
+         agent \
+        -config-dir /etc/consul.d/bootstrap/ \
+        -ui
+        ExecReload=/opt/bin/consul reload
+        Restart=always
+        RestartSec=2
+        TasksMax=infinity
+        OOMScoreAdjust=-1000
+        [Install]
+        WantedBy=multi-user.target

@@ -1,0 +1,186 @@
+etcd:
+  name: "NS2"
+locksmith:
+  reboot_strategy: off
+passwd:
+  users:
+    - name: core
+      password_hash: "$1$CU/OwWDV$o.Tueob2MAoOmM84AUqf//"
+      ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC3cchfUO9Cc26w6gDLwPkca6FPahjhTHMEMvyFE8fNNtTxpEhMIHnojfS0cEcbEUsj7z3w/bdhKotoqvv/hXPBfkpK8J8grY3D7D9c8+Bk9/RAETYfvHBcV+kg8dkNXhf+zPY/MkbnI5sTVbz/satP6hnumMxqm6LDArnEa1Zs7qNc0WP+A3Cz4i8zju8CQZcRYR2Ap3Z+iYa4TGd8cilt3jZwZAMuQwcURN7WLrFLT6zhnzGr0pt0k7vRXfqsiC/3fd05AGZRj87uup1t7dLI6sC2rG6ZcdZqs30G5+IRv+dcph9stHm2ObUAAsKZDBK0IMY5C7DKIwic1lVP7T6mRzLsVgVr/12zb4iZNZ3NZrHsETyzkzcaAafYfjju+7BnzK2Z8SSnTKUjXpExjwguONtC0O4v67PobDOX2nk109vlu5W/SevnU63EZ3E1LJbecJl5RZce9wG+skvTbyMXuyx42+oaZOuukV5bJHZAvyhCxwCNab3SKjOp0K2pZPM= xyygsy@xyygsy-82l5
+      groups:
+        - wheel
+        - docker
+      shell: /bin/bash
+    - name: consul
+      password_hash: "$1$CU/OwWDV$o.Tueob2MAoOmM84AUqf//"
+      shell: /bin/bash  
+storage:
+  directories:
+  - path: /etc/nomad.d
+    mode: 0755
+    user:
+      name: consul
+
+  - path: /var/lib/nomad
+    mode: 0755
+    user:
+      name: consul
+  - path: /etc/consul.d
+    mode: 0755
+    user:
+      name: consul 
+  - path: /var/lib/consul
+    mode: 0755
+    user:
+      name: consul  
+
+  files:
+  - path: /opt/bin/nomad_1.2.6_linux_amd64.zip
+    filesystem: root
+    mode: 0644
+    contents:
+      remote:
+        url: https://releases.hashicorp.com/nomad/1.2.6/nomad_1.2.6_linux_amd64.zip
+        verification:
+          hash:
+            function: sha512
+            sum: c134198bd79b1e0c98d12262a7450cd0eee941f70118cfd196955f064073d312e395585a034d5ce32aa4c4763cb5a20a75d676407347f1ee515865f8d206cab5   
+
+  - path: /opt/bin/consul_1.11.2_linux_amd64.zip
+    filesystem: root
+    mode: 0644
+    contents:
+      remote:
+        url: https://releases.hashicorp.com/consul/1.11.2/consul_1.11.2_linux_amd64.zip
+        verification:
+          hash:
+            function: sha512
+            sum: 074c984575c8c8bc694f83eac034765a40448418687af8a213a83450c96b36cffe4f1fcb839d5a7f595d33f9e96497d31b2a193178fa1e24e2166ec1de475650
+
+  - path: /etc/hostname
+    contents:
+      inline: nomad-server-2
+    mode: 0600
+
+  - path: /etc/nomad.d/common.hcl
+    contents:
+      local: common_nom2.hcl
+    user:
+      name: consul
+    mode: 0755
+
+
+  - path: /etc/nomad.d/server.hcl
+    contents:
+      local: server_nom2.hcl         
+    user:
+      name: consul
+    mode: 0755
+
+
+  - path: /etc/consul.d/client/config.json
+    contents:
+      local: config_nom2.json
+    user:
+      name: consul
+    mode: 0755
+
+
+systemd:
+  units:
+    - name: prepare-nomad-binary.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Unpack Nomad binary to /opt/bin
+        ConditionPathExists=!/opt/bin/nomad
+        [Service]
+        Type=oneshot
+        Restart=on-failure
+        RemainAfterExit=yes
+
+        ExecStart=/usr/bin/unzip "/opt/bin/nomad_1.2.6_linux_amd64.zip" -d /opt/bin
+        ExecStart=/usr/bin/rm "/opt/bin/nomad_1.2.6_linux_amd64.zip"
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: prepare-consul-binary.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Unpack Consul binary to /opt/bin
+        ConditionPathExists=!/opt/bin/consul
+        [Service]
+        Type=oneshot
+        Restart=on-failure
+        RemainAfterExit=yes
+        Environment=CONSUL_VERSION=1.11.2
+        ExecStart=/usr/bin/unzip "/opt/bin/consul_${CONSUL_VERSION}_linux_amd64.zip" -d /opt/bin
+        ExecStart=/usr/bin/rm "/opt/bin/consul_${CONSUL_VERSION}_linux_amd64.zip"
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: consul.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Consul
+        Documentation=https://www.consul.io/docs
+        After=network-online.target prepare-consul-binary.service
+        Wants=network-online.target
+        Requires=prepare-consul-binary.service
+        [Service]
+        ExecStart=/opt/bin/consul \
+         agent \
+        -config-dir /etc/consul.d/client/ 
+        ExecReload=/opt/bin/consul reload
+        Restart=always
+        RestartSec=2
+        TasksMax=infinity
+        OOMScoreAdjust=-1000
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: nomad.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Nomad
+        Documentation=https://www.nomadproject.io/docs/
+        After=network-online.target prepare-nomad-binary.service
+        Wants=network-online.target
+        Requires=prepare-nomad-binary.service
+        # When using Nomad with Consul it is not necessary to start Consul first. These
+        # lines start Consul before Nomad as an optimization to avoid Nomad logging
+        # that Consul is unavailable at startup.
+        Wants=consul.service
+        After=consul.service
+        [Service]
+        User=consul
+        Group=consul
+        ExecReload=/bin/kill -HUP $MAINPID
+        ExecStart=/opt/bin/nomad agent -config /etc/nomad.d
+        KillMode=process
+        KillSignal=SIGINT
+        LimitNOFILE=65536
+        LimitNPROC=infinity
+        Restart=on-failure
+        RestartSec=2
+        TasksMax=infinity
+        OOMScoreAdjust=-1000
+        [Install]
+        WantedBy=multi-user.target
+
+
+networkd:
+  units:
+    - name: static.network
+      contents: |
+        [Match]
+        Name=eth0
+
+        [Network]
+        Address=192.168.122.22/24
+        Gateway=192.168.122.1
+
